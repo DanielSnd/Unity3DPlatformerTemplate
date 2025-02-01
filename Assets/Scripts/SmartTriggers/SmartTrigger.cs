@@ -48,7 +48,10 @@ public class SmartTrigger : MonoBehaviour
 
     private bool hasAlreadyTriggered;
     private HashSet<Collider> triggeredColliders = new HashSet<Collider>();
-    public List<Rigidbody> triggeredRigidbodies = new List<Rigidbody>();
+    private List<Rigidbody> triggeredRigidbodies = new List<Rigidbody>();
+
+    private bool isInCooldown = false;
+    private float currentWeight = 0f;
 
     protected bool hasAnyTriggerActions { get => onTriggerActions.Count > 0; }
     protected bool hasAnyUntriggerActions { get => onUntriggerActions.Count > 0; }
@@ -84,10 +87,18 @@ public class SmartTrigger : MonoBehaviour
         if (!IsValidTrigger(other)) return;
         
         triggeredColliders.Add(other);
+        
+        // Track rigidbody for weight calculation
+        if (other.attachedRigidbody != null && !triggeredRigidbodies.Contains(other.attachedRigidbody))
+        {
+            triggeredRigidbodies.Add(other.attachedRigidbody);
+            UpdateTotalWeight();
+        }
 
-        if ((triggerOptions.HasFlag(TriggerOptions.TriggerWhenEnter)))
+        if (triggerOptions.HasFlag(TriggerOptions.TriggerWhenEnter))
         {
             if (triggerOptions.HasFlag(TriggerOptions.TriggerOnlyOnce) && hasAlreadyTriggered) return;
+            if (!CanTrigger()) return;
             ExecuteTriggerActions();
         }
     }
@@ -97,8 +108,15 @@ public class SmartTrigger : MonoBehaviour
         if (!IsValidTrigger(other)) return;
 
         triggeredColliders.Remove(other);
+        
+        // Remove rigidbody and update weight
+        if (other.attachedRigidbody != null)
+        {
+            triggeredRigidbodies.Remove(other.attachedRigidbody);
+            UpdateTotalWeight();
+        }
 
-        if ((triggerOptions.HasFlag(TriggerOptions.TriggerWhenExit)))
+        if (triggerOptions.HasFlag(TriggerOptions.TriggerWhenExit))
         {
             if (triggerOptions.HasFlag(TriggerOptions.TriggerOnlyOnce) && hasAlreadyTriggered) return;
             ExecuteTriggerActions();
@@ -112,11 +130,34 @@ public class SmartTrigger : MonoBehaviour
 
     private void Update()
     {
-        if ((triggerOptions.HasFlag(TriggerOptions.TriggerWhileInside)) && triggeredColliders.Count > 0)
+        if (triggerOptions.HasFlag(TriggerOptions.TriggerWhileInside) && triggeredColliders.Count > 0)
         {
             if (triggerOptions.HasFlag(TriggerOptions.TriggerOnlyOnce) && hasAlreadyTriggered) return;
+            if (!CanTrigger()) return;
             ExecuteTriggerActions();
         }
+    }
+
+    private void UpdateTotalWeight()
+    {
+        currentWeight = triggeredRigidbodies.Sum(rb => rb.mass);
+    }
+
+    private bool CanTrigger()
+    {
+        // Check cooldown
+        if (triggerOptions.HasFlag(TriggerOptions.HasCooldown) && isInCooldown)
+        {
+            return false;
+        }
+
+        // Check weight requirement
+        if (triggerOptions.HasFlag(TriggerOptions.RequiresMinWeight) && currentWeight < requiredWeight)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -150,6 +191,12 @@ public class SmartTrigger : MonoBehaviour
     {
         StartCoroutine(ExecuteActionsRoutine(onTriggerActions));
         hasAlreadyTriggered = true;
+
+        // Start cooldown if enabled
+        if (triggerOptions.HasFlag(TriggerOptions.HasCooldown))
+        {
+            StartCoroutine(CooldownRoutine());
+        }
     }
 
     protected void ExecuteUntriggerActions()
@@ -193,5 +240,12 @@ public class SmartTrigger : MonoBehaviour
         {
             yield return null;
         }
+    }
+
+    private IEnumerator CooldownRoutine()
+    {
+        isInCooldown = true;
+        yield return new WaitForSeconds(cooldownBeforeReactivation);
+        isInCooldown = false;
     }
 }

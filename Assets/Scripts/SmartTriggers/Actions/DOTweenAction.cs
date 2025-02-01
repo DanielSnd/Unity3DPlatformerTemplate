@@ -34,6 +34,9 @@ public class DOTweenAction : TriggerAction
     [Tooltip("The object to animate")]
     [SerializeField] private Transform target;
 
+    [Tooltip("Optional target Transform to move/rotate towards (takes priority over value if set)")]
+    [SerializeField] private Transform targetTransform;
+
     [Tooltip("What property of the object to animate")]
     [SerializeField] private TweenType tweenType = TweenType.Move;
 
@@ -42,6 +45,9 @@ public class DOTweenAction : TriggerAction
 
     [Tooltip("Target value for the animation (interpretation depends on TweenType)")]
     [SerializeField] private Vector3 value;
+
+    [Tooltip("Whether to use local space for movement (only applies to Move TweenType)")]
+    [SerializeField] private bool useLocalSpace = false;
 
     [Tooltip("How long the animation should take")]
     [SerializeField] private float duration = 1f;
@@ -91,16 +97,27 @@ public class DOTweenAction : TriggerAction
     
     private Tween CreateMoveTween()
     {
+        // Get the target position either from targetTransform or value
+        Vector3 targetPosition = targetTransform != null ? targetTransform.position : value;
+
         switch (tweenMode)
         {
             case TweenMode.To:
-                return target.DOMove(value, duration, snapping);
+                return useLocalSpace ? 
+                    target.DOLocalMove(targetPosition, duration, snapping) :
+                    target.DOMove(targetPosition, duration, snapping);
             case TweenMode.From:
-                return target.DOMove(value, duration, snapping).From();
+                return useLocalSpace ? 
+                    target.DOLocalMove(targetPosition, duration, snapping).From() :
+                    target.DOMove(targetPosition, duration, snapping).From();
             case TweenMode.Punch:
-                return target.DOPunchPosition(value, duration, vibrato, elasticity, snapping);
+                return useLocalSpace ?
+                    target.DOPunchPosition(targetPosition, duration, vibrato, elasticity, snapping) :
+                    target.DOPunchPosition(targetPosition, duration, vibrato, elasticity, snapping);
             case TweenMode.Shake:
-                return target.DOShakePosition(duration, value, vibrato, elasticity, snapping);
+                return useLocalSpace ?
+                    target.DOShakePosition(duration, targetPosition, vibrato, elasticity, snapping) :
+                    target.DOShakePosition(duration, targetPosition, vibrato, elasticity, snapping);
             default:
                 return null;
         }

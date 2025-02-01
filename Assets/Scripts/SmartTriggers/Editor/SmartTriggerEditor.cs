@@ -14,6 +14,8 @@ public class SmartTriggerEditor : Editor
     private SerializedProperty optionsProperty;
     private SerializedProperty triggerLayersProperty;
     private SerializedProperty triggerTagsProperty;
+    private SerializedProperty cooldownProperty;
+    private SerializedProperty requiredWeightProperty;
 
     ReorderableList triggerList, untriggerList;
 
@@ -22,6 +24,8 @@ public class SmartTriggerEditor : Editor
         optionsProperty = serializedObject.FindProperty("triggerOptions");
         triggerLayersProperty = serializedObject.FindProperty("triggerLayers");
         triggerTagsProperty = serializedObject.FindProperty("triggerTags");
+        cooldownProperty = serializedObject.FindProperty("cooldownBeforeReactivation");
+        requiredWeightProperty = serializedObject.FindProperty("requiredWeight");
         SerializedProperty triggerListProperty = serializedObject.FindProperty("onTriggerActions");
 
         triggerList = new ReorderableList(serializedObject,
@@ -151,25 +155,67 @@ public class SmartTriggerEditor : Editor
 
     public override void OnInspectorGUI()
     {
-
         serializedObject.Update();
 
-        optionsProperty.intValue = EditorGUI.MaskField(EditorGUILayout.GetControlRect(), new GUIContent("Options"), optionsProperty.intValue, optionsProperty.enumNames);
+        EditorGUILayout.Space(5);
+        EditorGUILayout.LabelField("Trigger Settings", EditorStyles.boldLabel);
+        EditorGUILayout.Space(2);
 
-        serializedObject.ApplyModifiedProperties();
+        // Options field
+        optionsProperty.intValue = EditorGUI.MaskField(
+            EditorGUILayout.GetControlRect(), 
+            new GUIContent("Options", "Configure how and when the trigger should activate"), 
+            optionsProperty.intValue, 
+            optionsProperty.enumNames
+        );
 
-        serializedObject.Update();
+        EditorGUILayout.Space(5);
+        EditorGUILayout.LabelField("Trigger Conditions", EditorStyles.boldLabel);
+        EditorGUILayout.Space(2);
+
+        // Basic conditions
         EditorGUILayout.PropertyField(triggerLayersProperty);
         EditorGUILayout.PropertyField(triggerTagsProperty);
 
+        // Get current flags
+        TriggerOptions flags = (TriggerOptions)optionsProperty.intValue;
 
-        EditorGUILayout.Space();
-        if (triggerList != null) triggerList.DoLayoutList();
-
-        TriggerOptions enumFlagsProperty = (TriggerOptions)optionsProperty.enumValueFlag;
-        if ((enumFlagsProperty.HasFlag(TriggerOptions.UntriggerOtherwise)))
+        // Conditional properties based on flags
+        if (flags.HasFlag(TriggerOptions.HasCooldown))
         {
-            EditorGUILayout.Space();
+            EditorGUILayout.Space(5);
+            EditorGUILayout.LabelField("Cooldown Settings", EditorStyles.boldLabel);
+            EditorGUILayout.Space(2);
+            
+            EditorGUILayout.PropertyField(cooldownProperty, 
+                new GUIContent("Cooldown Duration", "Time in seconds before the trigger can activate again"));
+        }
+
+        if (flags.HasFlag(TriggerOptions.RequiresMinWeight))
+        {
+            EditorGUILayout.Space(5);
+            EditorGUILayout.LabelField("Weight Settings", EditorStyles.boldLabel);
+            EditorGUILayout.Space(2);
+            
+            EditorGUILayout.PropertyField(requiredWeightProperty, 
+                new GUIContent("Required Weight", "Minimum total mass of objects required to activate the trigger"));
+        }
+
+        // Trigger Actions
+        EditorGUILayout.Space(10);
+        EditorGUILayout.LabelField("Trigger Actions", EditorStyles.boldLabel);
+        EditorGUILayout.Space(2);
+        if (triggerList != null) 
+        {
+            triggerList.DoLayoutList();
+        }
+
+        // Untrigger Actions (conditional)
+        if (flags.HasFlag(TriggerOptions.UntriggerOtherwise))
+        {
+            EditorGUILayout.Space(10);
+            EditorGUILayout.LabelField("Untrigger Actions", EditorStyles.boldLabel);
+            EditorGUILayout.Space(2);
             untriggerList.DoLayoutList();
         }
 

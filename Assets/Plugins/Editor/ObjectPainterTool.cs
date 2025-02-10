@@ -8,7 +8,7 @@ public class ObjectPainterTool : EditorWindow
 
     public static ObjectPainterTool window;
 
-    static SceneView.OnSceneFunc onSceneGUIFunc;
+    static System.Action<SceneView> onSceneGUIDelegate;
 
     PointClickPlacementHelper placerHelper;
 
@@ -109,14 +109,14 @@ public class ObjectPainterTool : EditorWindow
 
     void OnEnable()
     {
-        onSceneGUIFunc = this.OnSceneGUI;
-        SceneView.onSceneGUIDelegate += onSceneGUIFunc;
+        onSceneGUIDelegate = OnSceneGUI;
+        SceneView.duringSceneGui += onSceneGUIDelegate;
 
     }
 
     void OnDestroy()
     {
-        SceneView.onSceneGUIDelegate -= onSceneGUIFunc;
+        SceneView.duringSceneGui -= onSceneGUIDelegate;
         RemovePlacerHelper();
     }
 

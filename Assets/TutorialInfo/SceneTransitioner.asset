@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bc37f1eaf9dfbf04c9c1a80ff29e95a5, type: 3}
-  m_Name: GettingStarted
+  m_Name: SceneTransitioner
   m_EditorClassIdentifier: 
-  title: Getting Started
+  title: 
   markdownContent: 
   icon: {fileID: 0}
   links: []

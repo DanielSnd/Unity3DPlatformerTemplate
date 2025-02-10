@@ -133,10 +133,10 @@ public class ReadmeEditor : Editor
 
         var iconWidth = Mathf.Min(EditorGUIUtility.currentViewWidth / 3f - 20f, 128f);
 
-        GUILayout.BeginVertical("Big title");
+        GUILayout.BeginVertical();
 
         bool shouldShowHeader = !currentlyEditing && (currentPage.icon != null || (currentPage.title !=  null && !string.IsNullOrEmpty(currentPage.title)));
-        GUILayout.BeginHorizontal("ButtonsTop");
+        GUILayout.BeginHorizontal();
         GUILayout.FlexibleSpace();
         // Navigation breadcrumb if this is a sub-page
         if (!(target is Readme) && !currentlyEditing)
@@ -475,7 +475,20 @@ public class ReadmeEditor : Editor
             if (EditorUtility.IsDirty(AssetDatabase.LoadAssetAtPath<TextAsset>(mdPath)))
             {
                 Repaint();
+                 if (markdownRenderer != null)
+                    {
+                        markdownRenderer.InvalidateCache();
+                    }
             }
+        }
+    }
+
+    // Add this to force a reparse when the editor recompiles or the window is focused
+    void OnFocus()
+    {
+        if (markdownRenderer != null)
+        {
+            markdownRenderer.InvalidateCache();
         }
     }
 }

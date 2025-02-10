@@ -9,7 +9,7 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(AdvancedMoveController))]
 public class PlayerController : MonoBehaviour
 {
-    private ThirdPersonCamera cameraFollower;
+    public ThirdPersonCamera CameraFollower {get; private set;}
     private Animator characterAnimator;
     private AdvancedMoveController moveController;
     private Rigidbody rb;
@@ -23,17 +23,27 @@ public class PlayerController : MonoBehaviour
 
     private HealthController healthComponent;
     private PlayerInput playerInput;
-
+    
     public bool JoinedThroughGameManager { get; set; } = false;
     public static List<PlayerController> players = new List<PlayerController>();
     private void OnEnable()
     {
-        players.Add(this);
+        if(moveController != null)
+            moveController.enabled = true;
     }
 
     private void OnDisable()
     {
-        players.Remove(this);
+        if (moveController != null)
+            {
+                inputVector = Vector3.zero;
+                moveDirection = Vector3.zero;
+                rb.velocity = Vector3.zero;
+                moveController.ApplyMovement(Vector3.zero);
+                moveController.UpdateMovement();
+                moveController.enabled=false;
+                UpdateVisualFeedback();
+            }
     }
 
     /// <summary>
@@ -41,6 +51,7 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     void Awake()
     {
+        players.Add(this);
         // Ensure correct tag for player identification
         if(!gameObject.CompareTag("Player"))
             tag = "Player";
@@ -51,18 +62,18 @@ public class PlayerController : MonoBehaviour
         // Cache component references
         moveController = GetComponent<AdvancedMoveController>();
         rb = GetComponent<Rigidbody>();
-        cameraFollower = GetComponentInChildren<ThirdPersonCamera>();
+        CameraFollower = GetComponentInChildren<ThirdPersonCamera>();
         characterAnimator = GetComponentInChildren<Animator>();
         healthComponent = GetComponent<HealthController>();
 
-        if (cameraFollower)
+        if (CameraFollower)
         {
             if (playerInput.camera == null) {
                 //Debug.Log(actions["Jump"].GetBindingDisplayString());
-                playerInput.camera = cameraFollower.GetComponent<Camera>();
+                playerInput.camera = CameraFollower.GetComponent<Camera>();
             }
-            cameraFollower.transform.SetParent(transform.parent);
-            DontDestroyOnLoad(cameraFollower.gameObject);
+            CameraFollower.transform.SetParent(transform.parent);
+            DontDestroyOnLoad(CameraFollower.gameObject);
         }
 
         DontDestroyOnLoad(gameObject);
@@ -83,10 +94,12 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     void OnDestroy()
     {
+        if (players.Contains(this))
+            players.Remove(this);
         if (playerInput)
             Destroy(playerInput);
-        if (cameraFollower)
-            Destroy(cameraFollower.gameObject);
+        if (CameraFollower)
+            Destroy(CameraFollower.gameObject);
     }
 
     void OnMove(InputValue inputVal)
@@ -121,7 +134,7 @@ public class PlayerController : MonoBehaviour
 
     void OnCameraOrbit(InputValue inputVal)
     {
-        cameraFollower.OrbitInput = inputVal.Get<float>();
+        CameraFollower.OrbitInput = inputVal.Get<float>();
     }
 
     /// <summary>
@@ -130,7 +143,7 @@ public class PlayerController : MonoBehaviour
     void Update()
     {
         // Convert input to camera-relative movement direction
-        Quaternion cameraRotation = Quaternion.Euler(0, cameraFollower.transform.eulerAngles.y, 0);
+        Quaternion cameraRotation = Quaternion.Euler(0, CameraFollower.transform.eulerAngles.y, 0);
         cameraAlignedForward = cameraRotation * Vector3.forward;
         cameraAlignedRight = cameraRotation * Vector3.right;
         
@@ -152,8 +165,8 @@ public class PlayerController : MonoBehaviour
 
         if (transform.position.y < -1000f) {
             CheckpointManager.TeleportPlayerToCheckpoint(gameObject);
-            if (cameraFollower)
-                cameraFollower.transform.position = gameObject.transform.position;
+            if (CameraFollower)
+                CameraFollower.transform.position = gameObject.transform.position;
         }
     }
 

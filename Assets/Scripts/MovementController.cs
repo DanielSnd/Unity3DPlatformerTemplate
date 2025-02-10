@@ -154,19 +154,16 @@ public class MovementController : MonoBehaviour
 	/// <summary>
 	/// Rotates entity to face a specific direction
 	/// </summary>
-	/// <param name="targetDirection">Direction or position to face towards</param>
+	/// <param name="targetDirection">Direction to face towards</param>
 	/// <param name="rotationSpeed">How quickly to rotate towards the target direction</param>
 	/// <param name="lockVertical">If true, only considers horizontal rotation</param>
 	public void AlignWithDirection(Vector3 targetDirection, float rotationSpeed, bool lockVertical, bool force = false)
 	{
-		Vector3 currentPos = transform.position;
 		if(lockVertical) {
-			currentPos.y = 0;
 			targetDirection.y = 0;
 		}
 		
-		Vector3 directionToTarget = targetDirection.magnitude < 3 ? targetDirection : (targetDirection - currentPos);
-		ApplyRotation(directionToTarget, rotationSpeed, force);
+		ApplyRotation(targetDirection, rotationSpeed, force);
 	}
 	
 	private void ApplyRotation(Vector3 direction, float rotationSpeed, bool force = false)

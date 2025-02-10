@@ -5,6 +5,7 @@ using UnityEditor;
 using System;
 using System.IO;
 using System.Reflection;
+using PlasticGui;
 
 [CustomEditor(typeof(WikiPage), true)]
 [InitializeOnLoad]
@@ -30,6 +31,21 @@ public class ReadmeEditor : Editor
     static ReadmeEditor()
     {
         EditorApplication.delayCall += SelectReadmeAutomatically;
+    }
+
+    private static Color _DefaultBackgroundColor;
+    public static Color DefaultBackgroundColor
+    {
+        get
+        {
+            if (_DefaultBackgroundColor.a == 0)
+            {
+                var method = typeof(EditorGUIUtility)
+                    .GetMethod("GetDefaultBackgroundColor", BindingFlags.NonPublic | BindingFlags.Static);
+                _DefaultBackgroundColor = (Color)method.Invoke(null, null);
+            }
+            return _DefaultBackgroundColor;
+        }
     }
 
     private void OnEnable()
@@ -111,6 +127,7 @@ public class ReadmeEditor : Editor
 
     protected override void OnHeaderGUI()
     {
+        showingSpecialBackgroundColor = false;
         currentPage = (WikiPage)target;
         Init();
 
@@ -208,12 +225,41 @@ public class ReadmeEditor : Editor
             GUILayout.EndHorizontal();
         }
         GUILayout.EndVertical();
+
+        showingSpecialBackgroundColor = false;
     }
 
+    Color originalBackgroundColor;
+    bool _showingSpecialBackgroundColor = false;
+    public bool showingSpecialBackgroundColor { get => _showingSpecialBackgroundColor; set
+        {
+            if (_showingSpecialBackgroundColor != value)
+            {
+                if (value) {
+                    originalBackgroundColor = GUI.backgroundColor;
+                    GUI.backgroundColor = DefaultBackgroundColor;
+                } else
+                {
+                    GUI.backgroundColor = originalBackgroundColor;
+                }
+                _showingSpecialBackgroundColor = value;
+            }
+        }
+    }
+
+    public void UpdateMarkdownFile(string newFileContents)
+    {
+        dirtyFileContent = newFileContents;
+    }
+
+    string dirtyFileContent = "";
     public override void OnInspectorGUI()
     {
         var wikiPage = (WikiPage)target;
+        showingSpecialBackgroundColor = true;
+        
         if (markdownRenderer == null) markdownRenderer = new MarkdownRenderer();
+        markdownRenderer.SetReadmeEditor(this);
         Init();
 
         if (currentlyEditing)
@@ -311,10 +357,19 @@ public class ReadmeEditor : Editor
         EditorGUILayout.EndScrollView();
         EditorGUILayout.EndVertical();
 
+
+        showingSpecialBackgroundColor = false;
         // Handle repaint requests from markdown renderer
         if (GUI.changed)
         {
             Repaint();
+            if (!string.IsNullOrEmpty(dirtyFileContent))
+            {
+                string getAssetPath = AssetDatabase.GetAssetPath(wikiPage);
+                string getMdPath = Path.ChangeExtension(assetPath, ".md");
+                File.WriteAllText(getMdPath, dirtyFileContent);
+                dirtyFileContent = "";
+            }
         }
     }
 

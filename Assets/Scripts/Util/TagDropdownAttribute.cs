@@ -1,2 +1,9 @@
 using UnityEngine;
-public class TagDropdownAttribute : PropertyAttribute { }
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+public class TagDropdownAttribute : CustomPropertyAttribute {
+
+    
+}

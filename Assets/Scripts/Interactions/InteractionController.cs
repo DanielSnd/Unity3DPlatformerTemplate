@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System;
 
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(PlayerController))]
@@ -12,7 +13,8 @@ public class InteractionController : MonoBehaviour
     [Header("Interaction Settings")]
     [SerializeField] private GameObject interactionZone;
     [SerializeField] private float interactionRadius = 0.5f;
-    
+    [SerializeField] private Texture2D interactableButtonTexture;
+
     [Header("Throwing Settings")]
     [SerializeField] private Vector3 throwForce = new Vector3(0, 5, 7);
     
@@ -35,8 +37,9 @@ public class InteractionController : MonoBehaviour
     private float lastInteractionTime;
     
     private List<Interactable> interactablesInRange = new List<Interactable>();
-    
+    public Collider PlayerCollider { get => playerCollider; }
     public Vector3 ThrowForce => throwForce;
+
 
     public bool IsCurrentInteractingWithThis(Interactable otherInteractable)
     {
@@ -47,6 +50,42 @@ public class InteractionController : MonoBehaviour
     {
         SetupComponents();
         SetupInteractionZone();
+    }
+
+    Vector3 lastInteractablePosition = Vector3.zero;
+    float interactableSize = 0f;
+    private void LateUpdate()
+    {
+        RemoveInvalidEntriesFromInteractablesList();
+
+        DrawButtonHintForInteractables();
+    }
+
+    private void DrawButtonHintForInteractables()
+    {
+        if (interactablesInRange.Count > 0 && interactableButtonTexture != null && currentInteractable == null)
+        {
+            interactableSize = Mathf.Clamp(interactableSize + Time.deltaTime * 2.6f, 0.0f, 1.0f);
+            lastInteractablePosition = interactablesInRange[0].transform.position;
+        }
+        else
+        {
+            interactableSize = Mathf.Clamp(interactableSize - Time.deltaTime * 4.2f, 0.0f, 1.0f);
+        }
+
+        if (interactableSize > 0.01f)
+        {
+            DrawQuadSprite.DrawSprite(interactableButtonTexture, lastInteractablePosition + Vector3.up * Mathf.Sin(Time.time * 4.25f) * 0.125f, Vector3.one * interactableSize);
+        }
+    }
+
+    private void RemoveInvalidEntriesFromInteractablesList()
+    {
+        // Remove any invalid entries in our list.
+        for (int i = interactablesInRange.Count - 1; i >= 0; i--)
+        {
+            if (interactablesInRange[i] == null) interactablesInRange.RemoveAt(i);
+        }
     }
 
     private void SetupComponents()
@@ -87,11 +126,19 @@ public class InteractionController : MonoBehaviour
     {
         if (currentInteractable != null && Time.time > lastInteractionTime + 0.1f)
         {
-            EndCurrentInteraction();
+            if (currentInteractable.CanInteract(this))
+                currentInteractable.OnInteract(this);
         }
         else if (interactablesInRange.Count > 0 && Time.time > lastInteractionTime + 0.2f)
         {
             BeginInteraction(interactablesInRange[0]);
+        }
+    }
+
+    void OnCancel()
+    {
+        if (currentInteractable != null && Time.time > lastInteractionTime + 0.1f) {
+            EndCurrentInteraction();
         }
     }
 

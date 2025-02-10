@@ -10,7 +10,7 @@ public class Checkpoint : MonoBehaviour
     [Header("Checkpoint Settings")]
     [Tooltip("Whether this is the initial checkpoint of the level")]
     [SerializeField] private bool isInitialCheckpoint;
-    public bool IsInitialCheckpoint { get => IsInitialCheckpoint; }
+    public bool IsInitialCheckpoint { get => isInitialCheckpoint; }
 
     [Header("Visual Feedback")]
     [SerializeField] private Material inactiveMaterial;

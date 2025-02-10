@@ -23,6 +23,8 @@ public class HazardZone : MonoBehaviour
     [Header("Damage Settings")]
     [Tooltip("Amount of damage to deal on contact (negative values will heal instead)")]
     [SerializeField] private int damageAmount = 1;
+    [Tooltip("Whether this hazard should despawn itself after dealing damage")]
+    [SerializeField] private bool despawnAfterDamage = false;
     
     [Tooltip("Tags of entities that can be affected by this hazard. Leave empty to affect all objects")]
     [SerializeField, TagDropdown] private string[] vulnerableTags = { "Player" };
@@ -107,8 +109,12 @@ public class HazardZone : MonoBehaviour
         {
             other.attachedRigidbody.AddForce(transform.up * launchForce, ForceMode.Force);
             
-            if(damageAmount != 0 && !other.gameObject.isGameObjectInLayer(InvulnerableLayer))
-                gameObject.ApplyDamage(other.gameObject, damageAmount);
+            if(damageAmount != 0 && !other.gameObject.isGameObjectInLayer(InvulnerableLayer)) {
+                    gameObject.ApplyDamage(other.gameObject, damageAmount);
+                    if (despawnAfterDamage) {
+                        Destroy(gameObject);
+                    }
+                }
             
             lastTimeAppliedHazard = Time.time;
         }
@@ -161,6 +167,8 @@ public class HazardZone : MonoBehaviour
             knockbackHeight: launchForce,
             knockbackForce: repulsionForce
         );
+        if (damageAmount > 0 && despawnAfterDamage)
+            Destroy(gameObject);
         lastTimeAppliedHazard = Time.time;
         PlayImpactFeedback();
     }

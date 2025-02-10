@@ -86,7 +86,7 @@ public class SideBySidePropertyDrawer : PropertyDrawer
         float totalWeight = group.Sum(p => p.widthWeight);
         
         // Begin horizontal group
-        EditorGUI.BeginHorizontal(position);
+        EditorGUILayout.BeginHorizontal();
         
         float currentX = position.x;
         float remainingWidth = position.width;
@@ -114,7 +114,7 @@ public class SideBySidePropertyDrawer : PropertyDrawer
             remainingWidth -= propWidth;
         }
         
-        EditorGUI.EndHorizontal();
+        EditorGUILayout.EndHorizontal();
         
         // Clear the group if all properties have been drawn
         if (Event.current.type == EventType.Repaint)

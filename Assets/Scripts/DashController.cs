@@ -30,6 +30,8 @@ public class DashController : MonoBehaviour
     public Material afterImageMaterial;
     [Tooltip("Curve to control dash force along the dash")]
     public AnimationCurve afterImageOpacityCurve = new AnimationCurve();
+    [Tooltip("Curve to control dash force along the dash")]
+    public Color dashTrailColor;
 
     // Dash state
     private bool isDashing;
@@ -55,6 +57,7 @@ public class DashController : MonoBehaviour
     private MovementController moveController;
     private Rigidbody rb;
     private HealthController healthComponent;
+    private TrailRenderer trail;
 
     private int originalLayer;
 
@@ -69,6 +72,7 @@ public class DashController : MonoBehaviour
         TryGetComponent(out rb);
         TryGetComponent(out healthComponent);
         TryGetComponent(out moveController);
+        trail = GetComponentInChildren<TrailRenderer>();
         animator = GetComponentInChildren<Animator>();
     }
 
@@ -171,6 +175,11 @@ public class DashController : MonoBehaviour
         dashEndTime = Time.time + dashDuration;
         nextDashTime = dashEndTime + dashCooldown;
 
+        if (trail)
+        {
+            trail.startColor = new Color(dashTrailColor.r, dashTrailColor.g, dashTrailColor.b, trail.startColor.a);
+            trail.endColor = new Color(dashTrailColor.r, dashTrailColor.g, dashTrailColor.b, trail.endColor.a);
+        }
         moveController.ApplyCustomSquashEffect(new Vector3(0.5f, 1.0f, 2.0f));
         moveController.enabled = false;
 
@@ -222,7 +231,7 @@ public class DashController : MonoBehaviour
         if (moveController != null && !moveController.enabled)
         {
             moveController.Update();
-            moveController.AlignWithDirection(dashDirection, 8.5f, true, true);
+            moveController.AlignWithDirection(dashDirection.normalized, 8.5f, true, true);
         }
 
         // Reduce gravity if dashing in air
@@ -261,6 +270,12 @@ public class DashController : MonoBehaviour
         if (dashParticles)
         {
             dashParticles.Stop();
+        }
+
+        if (trail)
+        {
+            trail.startColor = new Color(0.8f, 0.8f, 0.8f, trail.startColor.a);
+            trail.endColor = new Color(0.8f, 0.8f, 0.8f, trail.endColor.a);
         }
     }
 }

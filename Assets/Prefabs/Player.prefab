@@ -90,6 +90,7 @@ MonoBehaviour:
   SquashEffect: {x: 1.4, y: 0.6, z: 1.4}
   StretchEffect: {x: 0.6, y: 1.4, z: 0.6}
   SquashAndStretchRecoverSpeed: 5
+  maxStepClimbable: 2
   maxTraversableSlope: 40
   slideSpeed: 42
   platformGripForce: 7.7
@@ -159,6 +160,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   interactionZone: {fileID: 100018}
   interactionRadius: 0.5
+  interactableButtonTexture: {fileID: 2800000, guid: e2f1960f9f69cd44598490a6220153a6,
+    type: 3}
   throwForce: {x: 0, y: 5, z: 7}
   interactSound: {fileID: 0}
   releaseSound: {fileID: 0}
@@ -333,6 +336,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  dashTrailColor: {r: 0.55722225, g: 0.41870406, b: 0.81886786, a: 1}
 --- !u!1 &100018
 GameObject:
   m_ObjectHideFlags: 0

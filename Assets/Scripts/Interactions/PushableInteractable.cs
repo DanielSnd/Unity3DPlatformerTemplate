@@ -4,11 +4,10 @@ using UnityEngine;
 /// Represents an object that can be grabbed and pushed/pulled by the player.
 /// The player will be locked facing the object while interacting with it.
 /// </summary>
-public class PushableInteractable : Interactable
+public class PushableInteractable : PhysicsInteractable
 {
     [Tooltip("Force required to break the connection with the player")]
     [SerializeField] private float jointBreakForce = 200f;
-    
     [Tooltip("Rotational force required to break the connection with the player")]
     [SerializeField] private float jointBreakTorque = 200f;
 
@@ -20,6 +19,7 @@ public class PushableInteractable : Interactable
         if (currentInteractor != null)
             currentInteractor.EndCurrentInteraction();
     }
+
     public override bool OnInteract(InteractionController controller)
     {
         if (!base.OnInteract(controller)) return false;
@@ -41,6 +41,11 @@ public class PushableInteractable : Interactable
 
         AttachToController<FixedJoint>(controller);
         return true;
+    }
+    public override void OnInteractedAlreadyInteracting(InteractionController controller)
+    {
+        base.OnInteractedAlreadyInteracting(controller);
+        PusherJumped();
     }
 
     protected void PusherJumped() {

@@ -23,7 +23,7 @@ TagManager:
   - Camera
   - Enemy
   - Invulnerable
-  - 
+  - PickedUpObject
   - 
   - 
   - 

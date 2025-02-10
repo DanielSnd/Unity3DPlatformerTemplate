@@ -17,7 +17,7 @@ public class UnityEventAction : TriggerAction
     {
         Immediate,      // Complete immediately after invoking the event
         AfterDelay,     // Complete after a specified time delay
-        Manual          // Complete only when SetComplete() is called externally
+        Manual          // Complete only when Complete() is called externally
     }
 
     [Tooltip("The UnityEvent to invoke when this action executes")]
@@ -41,14 +41,10 @@ public class UnityEventAction : TriggerAction
                 Complete();
                 break;
             case CompletionType.AfterDelay:
-                var smartTrigger = GameObject.FindObjectOfType<SmartTrigger>();
-                if (smartTrigger != null)
-                {
-                    completionCoroutine = smartTrigger.StartCoroutine(CompleteAfterDelay());
-                }
+                owner.StartCoroutine(CompleteAfterDelay());
                 break;
             case CompletionType.Manual:
-                // Will be completed by external call to SetComplete()
+                // Will be completed by external call to Complete()
                 break;
         }
     }

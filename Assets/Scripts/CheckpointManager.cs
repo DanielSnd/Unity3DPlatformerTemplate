@@ -20,6 +20,7 @@ public static class CheckpointManager
     /// </summary>
     private static readonly Dictionary<string, int> sceneHashCache = new Dictionary<string, int>();
     
+    public static void ClearSceneHashCache() {sceneHashCache.Clear();}
     /// <summary>
     /// The current active checkpoint position and scene hash
     /// </summary>

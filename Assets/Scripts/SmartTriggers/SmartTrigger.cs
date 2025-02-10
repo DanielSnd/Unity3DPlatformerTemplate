@@ -4,19 +4,30 @@ using System;
 using System.Collections;
 using System.Linq;
 
+// TODO: Make the dropdown for trigger options show the options with spaces between
+// TODO: Add TriggerActions for Spawning with option of defining a spawn rotation/direction.
+// TODO: On Interactable allow for adding a bool that will control whether pressing interact a second time will stop the interaction or do another action. (Possible with trigger action list)
+// TODO: Separate the trigger action list from Smart Trigger so can reuse in interactables.
+// TODO: Add option on Hazards to self-destruct after X amount of damages dealt.
+
+
 /// <summary>
 /// A flexible trigger system that can execute a sequence of actions based on various trigger conditions.
 /// </summary>
 [System.Flags]
 public enum TriggerOptions
 {
-    TriggerOnlyOnce = 1,        // The trigger will only execute its actions once
+    TriggerWhenPlayerInteract = 1,
     TriggerWhenEnter = 2,       // Execute when objects enter the trigger
     TriggerWhenExit = 4,        // Execute when objects exit the trigger
-    TriggerWhileInside = 8,     // Continuously execute while objects are inside
+    TriggerEveryFrameWhileInside = 8,     // Continuously execute while objects are inside
     UntriggerOtherwise = 16,     // Execute untrigger actions when no valid objects are inside
-    RequiresMinWeight = 32,
-    HasCooldown = 64
+    TriggerOnSpawn = 32,
+    TriggerOnCollide = 64,  // Execute on collider enter
+    HasCooldown = 128,
+    RequiresMinWeight = 256,
+    TriggerOnlyOnce = 1024,        // The trigger will only execute its actions once
+    UntriggeringInterruptsExecution = 2056,
 }
 
 /// <summary>
@@ -37,24 +48,98 @@ public class SmartTrigger : MonoBehaviour
     [Tooltip("Weight required to activate this trigger")]
     [SerializeField] private float requiredWeight = 0.0f;
 
+    [Tooltip("Weight required to activate this trigger")]
+    [SerializeField] private bool togglableByInteraction = false;
+
     [Tooltip("Which tags can activate this trigger (leave empty to accept any tag)")]
-    [SerializeField][TagDropdown] private string[] triggerTags;
+    [SerializeField][TagDropdown] private List<string> triggerTags = new List<string>();
 
     [Tooltip("Actions to execute when the trigger activates")]
-    [SerializeReference] public List<TriggerAction> onTriggerActions = new List<TriggerAction>();
+    [SerializeReference] public TriggerActionsList onTriggerActions = new TriggerActionsList();
 
     [Tooltip("Actions to execute when the trigger deactivates (only used with UntriggerOtherwise option)")]
-    [SerializeReference] public List<TriggerAction> onUntriggerActions = new List<TriggerAction>();
+    [SerializeReference] public TriggerActionsList onUntriggerActions = new TriggerActionsList();
 
-    private bool hasAlreadyTriggered;
+    private bool hasAlreadyTriggered => onTriggerActions.hasAlreadyExecuted;
     private HashSet<Collider> triggeredColliders = new HashSet<Collider>();
     private List<Rigidbody> triggeredRigidbodies = new List<Rigidbody>();
 
     private bool isInCooldown = false;
+    private bool isInTriggeredState = false;
     private float currentWeight = 0f;
+
+    private TriggerInterruptorHolder untriggerInterruptor = new TriggerInterruptorHolder();
+    private TriggerInterruptorHolder triggerInterruptor = new TriggerInterruptorHolder();
 
     protected bool hasAnyTriggerActions { get => onTriggerActions.Count > 0; }
     protected bool hasAnyUntriggerActions { get => onUntriggerActions.Count > 0; }
+    private InteractionController lastInteractionController;
+    private PlayerController lastPlayerTriggered;
+    public PlayerController FindLastPlayerInteractor() {
+        if (lastInteractionController != null)
+            return lastInteractionController.GetComponentInParent<PlayerController>();
+        if (lastPlayerTriggered != null) return lastPlayerTriggered;
+        return null;
+    }
+    SmartTriggerInteractHelper interactHelper = null;
+    public void Awake()
+    {
+        if (triggerOptions.HasFlag(TriggerOptions.TriggerWhenPlayerInteract))
+        {
+            TryGetComponent<SmartTriggerInteractHelper>(out interactHelper);
+            if (interactHelper == null)
+                interactHelper = gameObject.AddComponent<SmartTriggerInteractHelper>();
+            interactHelper.SetSmartTrigger(this);
+        }
+    }
+
+    public void Start() {
+        if (triggerOptions.HasFlag(TriggerOptions.TriggerOnSpawn)) {
+            ExecuteTriggerActions();
+        }
+    }
+
+    public bool TriggeringFromInteractHelper(InteractionController controller)
+    {
+        bool result = false;
+        bool doingTrigger = true; ;
+        if (togglableByInteraction)
+        {
+            lastInteractionController = controller;
+            if (isExecutingTriggers || isInTriggeredState) {
+                result = true;
+                doingTrigger = false;
+                ExecuteUntriggerActions();
+            } else
+                result = ProcessTriggerEnter(controller.GetComponent<Collider>(), true);
+        } else
+            result = ProcessTriggerEnter(controller.GetComponent<Collider>(), true);
+
+        if (result) {
+            if (!togglableByInteraction)
+            {
+                StartCoroutine(RemoveInteractionControllerOnInteractComplete(controller, doingTrigger));
+            } else
+            {
+                interactHelper.OnInteractionEnd(controller);
+                controller.EndCurrentInteraction();
+            }
+        }
+        return result;
+    }
+
+    public IEnumerator RemoveInteractionControllerOnInteractComplete(InteractionController controller, bool Triggering)
+    {
+        yield return null;
+        while (isExecutingTriggers) {
+            yield return null;
+        }
+        interactHelper.OnInteractionEnd(controller);
+        if (controller.IsCurrentInteractingWithThis(interactHelper)) controller.EndCurrentInteraction();
+        ProcessTriggerExit(controller.GetComponent<Collider>(), true);
+
+        Debug.Log($"Ending interaction");
+    }
 
     public int GetTriggerListCount()
     {
@@ -82,12 +167,23 @@ public class SmartTrigger : MonoBehaviour
     {
         return onTriggerActions[indx];
     }
-    private void OnTriggerEnter(Collider other)
+
+    private void OnCollisionEnter(Collision other) {
+        if (triggerOptions.HasFlag(TriggerOptions.TriggerOnCollide))
+            ProcessTriggerEnter(other.collider);
+    }
+
+    private void OnTriggerEnter(Collider other) {
+        ProcessTriggerEnter(other);
+    }
+
+    private bool ProcessTriggerEnter(Collider other, bool ComingFromPlayerInteract = false)
     {
-        if (!IsValidTrigger(other)) return;
-        
+        if (other.isTrigger) return false;
+        if (!IsValidTrigger(other)) return false;
+        //Debug.Log($"Processing collider {other} {other.gameObject} has player controller? {other.GetComponent<PlayerController>() != null}", other);
         triggeredColliders.Add(other);
-        
+
         // Track rigidbody for weight calculation
         if (other.attachedRigidbody != null && !triggeredRigidbodies.Contains(other.attachedRigidbody))
         {
@@ -95,20 +191,30 @@ public class SmartTrigger : MonoBehaviour
             UpdateTotalWeight();
         }
 
-        if (triggerOptions.HasFlag(TriggerOptions.TriggerWhenEnter))
+        if (triggerOptions.HasFlag(TriggerOptions.TriggerWhenEnter) || (triggerOptions.HasFlag(TriggerOptions.TriggerWhenPlayerInteract) && ComingFromPlayerInteract))
         {
-            if (triggerOptions.HasFlag(TriggerOptions.TriggerOnlyOnce) && hasAlreadyTriggered) return;
-            if (!CanTrigger()) return;
-            ExecuteTriggerActions();
+            if (triggerOptions.HasFlag(TriggerOptions.TriggerOnlyOnce) && hasAlreadyTriggered) {
+                return false;
+            }
+            if (!CanTrigger()) return false;
+            
+            return ExecuteTriggerActions();
         }
+        return false;
     }
 
     private void OnTriggerExit(Collider other)
     {
+        ProcessTriggerExit(other);
+    }
+
+    private void ProcessTriggerExit(Collider other, bool ComingFromPlayerInteract = false)
+    {
+        if (other.isTrigger) return;
         if (!IsValidTrigger(other)) return;
 
         triggeredColliders.Remove(other);
-        
+
         // Remove rigidbody and update weight
         if (other.attachedRigidbody != null)
         {
@@ -116,21 +222,29 @@ public class SmartTrigger : MonoBehaviour
             UpdateTotalWeight();
         }
 
-        if (triggerOptions.HasFlag(TriggerOptions.TriggerWhenExit))
+        if (triggerOptions.HasFlag(TriggerOptions.TriggerWhenExit) && !ComingFromPlayerInteract)
         {
             if (triggerOptions.HasFlag(TriggerOptions.TriggerOnlyOnce) && hasAlreadyTriggered) return;
             ExecuteTriggerActions();
         }
 
-        if (triggerOptions.HasFlag(TriggerOptions.UntriggerOtherwise) && triggeredColliders.Count == 0)
+        if (triggeredColliders.Count == 0 && isInTriggeredState)
         {
-            ExecuteUntriggerActions();
+            if (triggerOptions.HasFlag(TriggerOptions.UntriggerOtherwise))
+            {
+                ExecuteUntriggerActions();
+            } else
+            {
+                if (!ComingFromPlayerInteract || !togglableByInteraction) {
+                    isInTriggeredState = false;
+                }
+            }
         }
     }
 
     private void Update()
     {
-        if (triggerOptions.HasFlag(TriggerOptions.TriggerWhileInside) && triggeredColliders.Count > 0)
+        if (triggerOptions.HasFlag(TriggerOptions.TriggerEveryFrameWhileInside) && triggeredColliders.Count > 0)
         {
             if (triggerOptions.HasFlag(TriggerOptions.TriggerOnlyOnce) && hasAlreadyTriggered) return;
             if (!CanTrigger()) return;
@@ -143,7 +257,7 @@ public class SmartTrigger : MonoBehaviour
         currentWeight = triggeredRigidbodies.Sum(rb => rb.mass);
     }
 
-    private bool CanTrigger()
+    public bool CanTrigger()
     {
         // Check cooldown
         if (triggerOptions.HasFlag(TriggerOptions.HasCooldown) && isInCooldown)
@@ -163,14 +277,14 @@ public class SmartTrigger : MonoBehaviour
     /// <summary>
     /// Checks if a collider meets the layer and tag requirements to activate this trigger.
     /// </summary>
-    protected bool IsValidTrigger(Collider other)
+    public bool IsValidTrigger(Collider other)
     {
         // Check layer
         if (!(triggerLayers.isLayerInLayerMask(other.gameObject.layer)))
             return false;
 
         // Check tags
-        if (triggerTags != null && triggerTags.Length > 0)
+        if (triggerTags != null && triggerTags.Count > 0)
         {
             bool hasValidTag = false;
             foreach (string tag in triggerTags)
@@ -187,59 +301,68 @@ public class SmartTrigger : MonoBehaviour
         return true;
     }
 
-    protected void ExecuteTriggerActions()
-    {
-        StartCoroutine(ExecuteActionsRoutine(onTriggerActions));
-        hasAlreadyTriggered = true;
+    public bool IsExecuting { get => isExecutingTriggers || isExecutingUntriggers; }
+    
 
-        // Start cooldown if enabled
-        if (triggerOptions.HasFlag(TriggerOptions.HasCooldown))
-        {
-            StartCoroutine(CooldownRoutine());
+    bool isExecutingTriggers => onTriggerActions.isExecutingList;
+    bool isExecutingUntriggers => onUntriggerActions.isExecutingList;
+    protected bool ExecuteTriggerActions()
+    {
+        if (isExecutingTriggers || isInTriggeredState)
+            return false;
+
+        if (isExecutingUntriggers && triggerOptions.HasFlag(TriggerOptions.UntriggeringInterruptsExecution)) {
+            onUntriggerActions.Interrupt();
         }
-    }
 
-    protected void ExecuteUntriggerActions()
-    {
-        StartCoroutine(ExecuteActionsRoutine(onUntriggerActions));
-    }
-
-    /// <summary>
-    /// Executes the trigger actions in sequence, respecting parallel execution flags.
-    /// </summary>
-    private IEnumerator ExecuteActionsRoutine(List<TriggerAction> actions)
-    {
-        List<TriggerAction> runningActions = new List<TriggerAction>();
+        onTriggerActions.ClearInterruption();
         
-        foreach (var action in actions)
-        {
-            if (action == null) continue;
-
-            // If previous actions aren't running in parallel, wait for them to complete
-            if (runningActions.Count > 0 && !action.RunInParallel)
-            {
-                while (runningActions.Any(a => !a.IsComplete))
-                {
-                    yield return null;
+        foreach (var item in triggeredColliders)
+            if (item.TryGetComponent<PlayerController>(out PlayerController playerController)) {
+                    lastPlayerTriggered = playerController;
                 }
-                runningActions.Clear();
-            }
-            
-            action.Execute();
-            runningActions.Add(action);
-            
-            // If this action runs in parallel, continue immediately to the next action
-            if (action.RunInParallel)
-            {
-                continue;
-            }
-        }
-        
-        // Wait for any remaining actions to complete
-        while (runningActions.Any(a => !a.IsComplete))
+
+        if (onTriggerActions.ExecuteTriggerActions(this, () => { onTriggerActions.ClearInterruption(); }, triggerOptions.HasFlag(TriggerOptions.UntriggeringInterruptsExecution)))
         {
-            yield return null;
+            isInTriggeredState = true;
+
+            // Start cooldown if enabled
+            if (triggerOptions.HasFlag(TriggerOptions.HasCooldown)) {
+                StartCoroutine(CooldownRoutine());
+            }
+            return true;
         }
+
+        return false;
+    }
+
+    protected bool ExecuteUntriggerActions()
+    {
+        if (isExecutingUntriggers)
+            return false;
+
+        isInTriggeredState = false;
+        if (isExecutingTriggers && triggerOptions.HasFlag(TriggerOptions.UntriggeringInterruptsExecution))
+            onTriggerActions.Interrupt();
+
+        onUntriggerActions.ClearInterruption();
+
+        if (onUntriggerActions.ExecuteTriggerActions(this, () =>
+        {
+            isInTriggeredState = false;
+            onUntriggerActions.ClearInterruption();
+        }, triggerOptions.HasFlag(TriggerOptions.UntriggeringInterruptsExecution)))
+        {
+            isInTriggeredState = false;
+
+            // Start cooldown if enabled
+            if (triggerOptions.HasFlag(TriggerOptions.HasCooldown))
+            {
+                StartCoroutine(CooldownRoutine());
+            }
+            return true;
+        }
+        return false;
     }
 
     private IEnumerator CooldownRoutine()

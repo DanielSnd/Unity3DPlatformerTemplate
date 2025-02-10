@@ -83,7 +83,7 @@ public class ThirdPersonCamera : MonoBehaviour
 	
 	private void LateUpdate()
 	{
-		if (!followTarget) return;
+		if (!followTarget || !enabled) return;
 		
 		HandleCollisionAvoidance();
 		UpdateCameraPosition();

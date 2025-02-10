@@ -1,3 +1,4 @@
+using DG.Tweening;
 using UnityEngine;
 
 [System.Serializable]
@@ -7,26 +8,23 @@ public class DisplayScreenTextAction : TriggerAction
     [SerializeField] private float displayDuration = 3f;
     [SerializeField] private Color textColor = Color.white;
     
-    private float timer;
-
     protected override void OnExecute()
     {
-        GameManager.menuHelper.Label.text = textToDisplay;
-        GameManager.menuHelper.Label.color = textColor;
-        timer = displayDuration;
-        
-        // Start a coroutine to clear the text after duration
-        MonoBehaviour runner = GameObject.FindObjectOfType<SmartTrigger>();
-        if (runner != null)
-        {
-            runner.StartCoroutine(ClearTextAfterDelay());
-        }
+        GameManager.Instance.MenuHelper.m_MiddleScreenLabel.text = textToDisplay;
+        GameManager.Instance.MenuHelper.m_MiddleScreenLabel.style.color = textColor;
+        GameManager.Instance.MenuHelper.m_MiddleScreenLabel.style.opacity = 0.0f;
+        var newSequence = DOTween.Sequence();
+        newSequence.Append(GameManager.Instance.MenuHelper.m_MiddleScreenLabel.DoFade(1.0f,0.45f));
+        newSequence.AppendInterval(displayDuration);
+        newSequence.Append(GameManager.Instance.MenuHelper.m_MiddleScreenLabel.DoFade(0.0f,0.45f));
+        newSequence.OnComplete(Complete);
     }
 
-    private System.Collections.IEnumerator ClearTextAfterDelay()
+    protected override void OnComplete()
     {
-        yield return new WaitForSeconds(displayDuration);
-        GameManager.menuHelper.Label.text = "";
-        Complete();
+        base.OnComplete();
+        GameManager.Instance.MenuHelper.m_MiddleScreenLabel.text = "";
+        GameManager.Instance.MenuHelper.m_MiddleScreenLabel.style.color = Color.white;
+        GameManager.Instance.MenuHelper.m_MiddleScreenLabel.style.opacity = 1.0f;
     }
 } 

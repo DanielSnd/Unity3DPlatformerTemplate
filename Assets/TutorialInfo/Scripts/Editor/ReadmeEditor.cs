@@ -133,10 +133,10 @@ public class ReadmeEditor : Editor
 
         var iconWidth = Mathf.Min(EditorGUIUtility.currentViewWidth / 3f - 20f, 128f);
 
-        GUILayout.BeginVertical("Big title");
+        GUILayout.BeginVertical();
 
         bool shouldShowHeader = !currentlyEditing && (currentPage.icon != null || (currentPage.title !=  null && !string.IsNullOrEmpty(currentPage.title)));
-        GUILayout.BeginHorizontal("ButtonsTop");
+        GUILayout.BeginHorizontal();
         GUILayout.FlexibleSpace();
         // Navigation breadcrumb if this is a sub-page
         if (!(target is Readme) && !currentlyEditing)
@@ -198,7 +198,7 @@ public class ReadmeEditor : Editor
         }
         if (shouldShowHeader)
         {
-            GUILayout.BeginHorizontal("In BigTitle");
+            GUILayout.BeginHorizontal();
             {
                 if (!currentlyEditing)
                 {

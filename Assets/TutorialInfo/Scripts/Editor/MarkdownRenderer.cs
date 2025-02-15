@@ -20,6 +20,10 @@ public class MarkdownRenderer
     private GUIStyle listStyle, textArea;
 
     private ReadmeEditor readmeEditor;
+    private List<Action> cachedGuiCalls = new List<Action>();
+    private string lastParsedMarkdown;
+    private bool needsReparsing = true;
+
     public MarkdownRenderer()
     {
         InitializeStyles();
@@ -76,12 +80,28 @@ public class MarkdownRenderer
     {
         if (string.IsNullOrEmpty(markdown)) return;
 
-        modifiedFile = false;
-        fileLines = SplitIntoBlocks(markdown);
-        for (int i = 0; i < fileLines.Count; i++) {
-            RenderBlock(fileLines[i], i);
+        if (markdown != lastParsedMarkdown || needsReparsing)
+        {
+            modifiedFile = false;
+            cachedGuiCalls.Clear();
+            fileLines = SplitIntoBlocks(markdown);
+            
+            for (int i = 0; i < fileLines.Count; i++) 
+            {
+                CacheBlock(fileLines[i], i);
+            }
+            
+            lastParsedMarkdown = markdown;
+            needsReparsing = false;
         }
-        if (modifiedFile && readmeEditor) {
+
+        foreach (var guiCall in cachedGuiCalls)
+        {
+            guiCall();
+        }
+
+        if (modifiedFile && readmeEditor) 
+        {
             readmeEditor.UpdateMarkdownFile(string.Join("\n", fileLines));
         }
     }
@@ -98,73 +118,90 @@ public class MarkdownRenderer
     bool renderSpaceBeforeNextBlock = false;
     int currentSpaceBetweenBlocks = 5;
     bool modifiedFile = false;
-    private void RenderBlock(string block, int lineIndex)
+    private void CacheBlock(string block, int lineIndex)
     {
-        if (string.IsNullOrWhiteSpace(block)) {
+        if (string.IsNullOrWhiteSpace(block))
+        {
             wasPreviouslyRenderedBlockList = false;
             wasPreviouslyRenderedBlockHeader = false;
-            EditorGUILayout.Space(currentSpaceBetweenBlocks);
+            cachedGuiCalls.Add(() => EditorGUILayout.Space(currentSpaceBetweenBlocks));
             currentSpaceBetweenBlocks = 5;
             return;
         }
+
         string originalBlock = block;
         int indentationCount = 0;
         int extraIndentation = 0;
         block = block.Trim();
 
-        for (int i = 0; i < originalBlock.Length; i++) {
+        for (int i = 0; i < originalBlock.Length; i++)
+        {
             if (originalBlock[i] == '\t') extraIndentation += 4;
-            if (block.Length > 0 && originalBlock[i] == block[0]) {
+            if (block.Length > 0 && originalBlock[i] == block[0])
+            {
                 indentationCount = i + extraIndentation;
                 break;
             }
         }
 
         bool isList = block.StartsWith("- ") || block.StartsWith("* ");
-
         int drawBefore = wasPreviouslyRenderedBlockHeader && isList ? 0 : currentSpaceBetweenBlocks;
-        
         currentSpaceBetweenBlocks = 5;
 
         if (isList)
         {
-            if(drawBefore > 0 && renderSpaceBeforeNextBlock)
-                GUILayout.Space(drawBefore);
-            
-            RenderList(block, indentationCount, lineIndex);
+            if (drawBefore > 0 && renderSpaceBeforeNextBlock)
+            {
+                int spaceToDraw = drawBefore;
+                cachedGuiCalls.Add(() => GUILayout.Space(spaceToDraw));
+            }
 
+            CacheListBlock(block, indentationCount, lineIndex);
             currentSpaceBetweenBlocks = 0;
             wasPreviouslyRenderedBlockList = true;
             wasPreviouslyRenderedBlockHeader = false;
-        }else
+        }
+        else
         {
             if (drawBefore > 0 && renderSpaceBeforeNextBlock)
-                GUILayout.Space(drawBefore);
+            {
+                int spaceToDraw = drawBefore;
+                cachedGuiCalls.Add(() => GUILayout.Space(spaceToDraw));
+            }
 
             if (wasPreviouslyRenderedBlockList)
-                GUILayout.Space(currentSpaceBetweenBlocks + 5); // Add space between blocks
-            
+            {
+                cachedGuiCalls.Add(() => GUILayout.Space(currentSpaceBetweenBlocks + 5));
+            }
+
             wasPreviouslyRenderedBlockList = false;
             bool renderedHeading = false;
+
             if (block.StartsWith("# "))
             {
-                RenderHeading(block.Substring(2), headingStyle1, indentationCount, ref renderedHeading);
+                string text = block.Substring(2);
+                cachedGuiCalls.Add(() => RenderHeading(text, headingStyle1, indentationCount, ref renderedHeading));
             }
             else if (block.StartsWith("## "))
             {
-                RenderHeading(block.Substring(3), headingStyle2, indentationCount, ref renderedHeading);
+                string text = block.Substring(3);
+                cachedGuiCalls.Add(() => RenderHeading(text, headingStyle2, indentationCount, ref renderedHeading));
             }
             else if (block.StartsWith("### "))
             {
-                RenderHeading(block.Substring(4), headingStyle3, indentationCount, ref renderedHeading);
+                string text = block.Substring(4);
+                cachedGuiCalls.Add(() => RenderHeading(text, headingStyle3, indentationCount, ref renderedHeading));
             }
             else if (block.StartsWith("```"))
             {
-                RenderCodeBlock(block);
+                string codeBlock = block;
+                cachedGuiCalls.Add(() => RenderCodeBlock(codeBlock));
             }
             else
             {
-                RenderParagraph(block, indentationCount);
+                string paragraph = block;
+                int indent = indentationCount;
+                cachedGuiCalls.Add(() => RenderParagraph(paragraph, indent));
             }
 
             wasPreviouslyRenderedBlockHeader = renderedHeading;
@@ -368,7 +405,7 @@ public class MarkdownRenderer
             readmeEditor.showingSpecialBackgroundColor = true;
 
             if (!drewToggle)
-                EditorGUILayout.LabelField("•", GUILayout.Width(15));
+                EditorGUILayout.LabelField("", GUILayout.Width(15));
 
             var segments = SplitTextIntoSegments(ProcessInlineFormatting(useLine));
             var lineContent = new StringBuilder();
@@ -421,25 +458,6 @@ public class MarkdownRenderer
                 }
             }
             EditorGUILayout.EndHorizontal();
-        }
-
-        string DrawToggle(string useLine, bool status, ref bool _drewToggle, int uselineSubstring = 3, int lineIndex = -1)
-        {
-            bool newToggleValue = EditorGUILayout.Toggle(status, toggleStyle, GUILayout.Width(15));
-            useLine = useLine.Substring(uselineSubstring);
-            _drewToggle = true;
-            if (newToggleValue != status && lineIndex > 0 && lineIndex < fileLines.Count)
-            {
-                if (newToggleValue) {
-                    fileLines[lineIndex] = fileLines[lineIndex].Replace("- []", "- [x]");
-                    fileLines[lineIndex] = fileLines[lineIndex].Replace("- [ ]", "- [x]");
-                } else
-                {
-                    fileLines[lineIndex] = fileLines[lineIndex].Replace("- [x]", "- [ ]");
-                }
-                modifiedFile = true;
-            }
-            return useLine;
         }
     }
 
@@ -507,6 +525,119 @@ public class MarkdownRenderer
             }
         }
         return false;
+    }
+
+    string DrawToggle(string useLine, bool status, ref bool _drewToggle, int uselineSubstring = 3, int lineIndex = -1)
+    {
+        bool newToggleValue = EditorGUILayout.Toggle(status, toggleStyle, GUILayout.Width(15));
+        useLine = useLine.Substring(uselineSubstring);
+        _drewToggle = true;
+        if (newToggleValue != status && lineIndex > 0 && lineIndex < fileLines.Count)
+        {
+            if (newToggleValue)
+            {
+                fileLines[lineIndex] = fileLines[lineIndex].Replace("- []", "- [x]");
+                fileLines[lineIndex] = fileLines[lineIndex].Replace("- [ ]", "- [x]");
+            }
+            else
+            {
+                fileLines[lineIndex] = fileLines[lineIndex].Replace("- [x]", "- [ ]");
+            }
+            modifiedFile = true;
+        }
+        return useLine;
+    }
+    private void CacheListBlock(string block, int indentationCount, int lineIndex)
+    {
+        var items = block.Split('\n')
+            .Where(line => line.StartsWith("- ") || line.StartsWith("* "))
+            .Select(line => line.Substring(2));
+
+        foreach (var item in items)
+        {
+            string capturedItem = item;
+            int capturedIndent = indentationCount;
+            int capturedLineIndex = lineIndex;
+
+            cachedGuiCalls.Add(() => {
+                EditorGUILayout.BeginHorizontal();
+                if (capturedIndent > 0)
+                    EditorGUILayout.Space(capturedIndent * 5.0f, false);
+
+                readmeEditor.showingSpecialBackgroundColor = false;
+
+                bool drewToggle = false;
+                bool toggleStatus = false;
+                string useLine = capturedItem;
+                
+                if (useLine.StartsWith("[ ]"))
+                    useLine = DrawToggle(useLine, false, ref drewToggle, 3, capturedLineIndex);
+                else if (useLine.StartsWith("[]"))
+                    useLine = DrawToggle(useLine, false, ref drewToggle, 2, capturedLineIndex);
+                else if (useLine.StartsWith("[x]"))
+                { 
+                    useLine = DrawToggle(useLine, true, ref drewToggle, 3, capturedLineIndex);
+                    toggleStatus = true;
+                }
+
+                readmeEditor.showingSpecialBackgroundColor = true;
+
+                if (!drewToggle)
+                    EditorGUILayout.LabelField("â€¢", GUILayout.Width(15));
+
+                var segments = SplitTextIntoSegments(ProcessInlineFormatting(useLine));
+                var lineContent = new StringBuilder();
+                
+                foreach (var segment in segments)
+                {
+                    if (segment.isLink)
+                    {
+                        // Flush any accumulated regular text
+                        if (lineContent.Length > 0)
+                        {
+                            EditorGUILayout.LabelField(lineContent.ToString(), bodyStyle);
+                            lineContent.Clear();
+                        }
+
+                        // Render the link
+                        if (LinkLabel(new GUIContent(segment.displayText)))
+                        {
+                            HandleLinkClick(segment.linkType, segment.target);
+                        }
+                    }
+                    else
+                    {
+                        lineContent.Append(segment.text);
+                    }
+                }
+
+                // Flush any remaining text
+                if (lineContent.Length > 0)
+                {
+                    if (drewToggle && toggleStatus) {
+                        string strikethrough = "";
+                        bool foundFirstNonSpace = false;
+                        foreach (char c in lineContent.ToString())
+                        {
+                            if (c != ' ' || foundFirstNonSpace)
+                            {
+                                strikethrough = strikethrough + c + ('\u0336');
+                                foundFirstNonSpace = true;
+                            }
+                            else{
+                                strikethrough = strikethrough + c;
+                            }
+                        }
+                        EditorGUILayout.LabelField(strikethrough, bodyStyleScratchedOff);
+                    } 
+                    else
+                    {
+                        EditorGUILayout.LabelField(lineContent.ToString(), bodyStyle);
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
+            });
+        }
     }
 
 }

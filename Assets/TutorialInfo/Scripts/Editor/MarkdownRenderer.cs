@@ -149,7 +149,7 @@ public class MarkdownRenderer
                 return;
             } else {
                 isInCodeBlock = false;
-                RenderCodeBlock(codeBlockContent.ToString());
+                CacheCodeBlock(codeBlockContent.ToString());
                 codeBlockContent = null;
                 return;
             }
@@ -652,7 +652,7 @@ public class MarkdownRenderer
     }
 
 
-    private void RenderCodeBlock(string code)
+    private void CacheCodeBlock(string code)
     {
         // C# keywords to highlight
         string[] keywords = new string[] {
@@ -709,13 +709,13 @@ public class MarkdownRenderer
 
         var height = linesCount * EditorGUIUtility.singleLineHeight;
         var guiLayoutHeight = GUILayout.Height(height);
+        string finalContent = lineContent.ToString();
 
-        // Cache GUI calls directly with lambda expressions
         cachedGuiCalls.Add(() => {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox, GUILayout.ExpandHeight(true), guiLayoutHeight);
             EditorGUI.DrawRect(GUILayoutUtility.GetRect(0, height), new Color(0.2f, 0.2f, 0.2f));
             GUILayout.Space(2);
-            EditorGUILayout.SelectableLabel(lineContent.ToString(), bodyStyle, guiLayoutHeight);
+            EditorGUILayout.SelectableLabel(finalContent, bodyStyle, guiLayoutHeight);
             EditorGUILayout.EndVertical();
             GUILayout.Space(2);
         });

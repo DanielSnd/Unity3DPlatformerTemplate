@@ -1,13 +1,11 @@
-## Welcome to the Level Tutorial Assignment!
+# Welcome to the Level Tutorial Assignment!
 This template includes the settings and assets you need to start creating with the Universal Render Pipeline.
 
 ## Learn More:
-- [[WikiPage:TutorialInfo/GettingStarted]]
+- [Getting Started](Assets/TutorialInfo/GettingStarted.md) 
 
 ## References:
 - [The Level Design Book](https://book.leveldesignbook.com/)
-
-
 
 ## Assets used licensed under CC0:
 - [Kay Lousberg Mini-Game Variety Pack](https://kaylousberg.itch.io/kay-kit-mini-game-variety-pack)

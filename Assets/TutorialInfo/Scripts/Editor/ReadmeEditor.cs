@@ -125,6 +125,18 @@ public class ReadmeEditor : Editor
         }
     }
 
+    private string GetMarkdownFilePath(UnityEngine.Object target)
+    {
+        string assetPath = AssetDatabase.GetAssetPath(target);
+        string mdPath = Path.ChangeExtension(assetPath,".md");
+        if (!File.Exists(mdPath) && Path.GetDirectoryName(assetPath) == "Assets") {
+            // If the .md file is not found in the same directory and the asset is in the root Assets folder,
+            // look for the .md file in the project root
+            mdPath = Path.Combine(Directory.GetParent(Application.dataPath).FullName, Path.GetFileNameWithoutExtension(assetPath) + ".md");
+        }
+
+        return mdPath;
+    }
     protected override void OnHeaderGUI()
     {
         showingSpecialBackgroundColor = false;
@@ -148,8 +160,7 @@ public class ReadmeEditor : Editor
             GUILayout.Space(k_Space);
         }
         if (currentlyEditing && GUILayout.Button("Open .md", EditorStyles.miniButton, GUILayout.Width(80))) {
-            string assetPath = AssetDatabase.GetAssetPath(target);
-            string mdPath = Path.ChangeExtension(assetPath, ".md");
+            string mdPath = GetMarkdownFilePath(target);
             if (File.Exists(mdPath)) {
                 AssetDatabase.OpenAsset(AssetDatabase.LoadAssetAtPath<TextAsset>(mdPath));
             }
@@ -159,8 +170,7 @@ public class ReadmeEditor : Editor
             currentlyEditing = !currentlyEditing;
             if (currentlyEditing)
             {
-                string assetPath = AssetDatabase.GetAssetPath(target);
-                string mdPath = Path.ChangeExtension(assetPath, ".md");
+                string mdPath = GetMarkdownFilePath(target);
              
                 if (File.Exists(mdPath))
                 {
@@ -177,8 +187,7 @@ public class ReadmeEditor : Editor
             {
                 if (changedMDEditing)
                 {
-                    string assetPath = AssetDatabase.GetAssetPath(target);
-                    string mdPath = Path.ChangeExtension(assetPath, ".md");
+                    string mdPath = GetMarkdownFilePath(target);
                     File.WriteAllText(mdPath, currentMDEditing);
                     markdownContent.stringValue = null;
                     serializedObject.ApplyModifiedProperties();
@@ -310,8 +319,7 @@ public class ReadmeEditor : Editor
 
         // Try to load markdown content from external file
         string markdownContent = wikiPage.markdownContent;
-        string assetPath = AssetDatabase.GetAssetPath(wikiPage);
-        string mdPath = Path.ChangeExtension(assetPath, ".md");
+        string mdPath = GetMarkdownFilePath(wikiPage);
 
         if (File.Exists(mdPath))
         {
@@ -365,8 +373,7 @@ public class ReadmeEditor : Editor
             Repaint();
             if (!string.IsNullOrEmpty(dirtyFileContent))
             {
-                string getAssetPath = AssetDatabase.GetAssetPath(wikiPage);
-                string getMdPath = Path.ChangeExtension(assetPath, ".md");
+                string getMdPath = GetMarkdownFilePath(wikiPage);
                 File.WriteAllText(getMdPath, dirtyFileContent);
                 dirtyFileContent = "";
             }

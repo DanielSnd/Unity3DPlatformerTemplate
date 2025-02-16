@@ -54,14 +54,17 @@ public class MarkdownRenderer
         headingStyle1 = new GUIStyle(bodyStyle);
         headingStyle1.fontSize = 26;
         headingStyle1.fontStyle = FontStyle.Bold;
+        headingStyle1.normal.textColor = new Color(0.98f, 0.98f, 0.98f);
 
         headingStyle2 = new GUIStyle(bodyStyle);
         headingStyle2.fontSize = 20;
         headingStyle2.fontStyle = FontStyle.Bold;
+        headingStyle2.normal.textColor = new Color(0.72f, 0.72f, 0.72f);
 
         headingStyle3 = new GUIStyle(bodyStyle);
         headingStyle3.fontSize = 16;
         headingStyle3.fontStyle = FontStyle.Bold;
+        headingStyle3.normal.textColor = new Color(0.42f, 0.42f, 0.42f);
 
         linkStyle = new GUIStyle(bodyStyle);
         linkStyle.normal.textColor = new Color(0x00 / 255f, 0x78 / 255f, 0xDA / 255f, 1f);
@@ -118,6 +121,9 @@ public class MarkdownRenderer
     bool renderSpaceBeforeNextBlock = false;
     int currentSpaceBetweenBlocks = 5;
     bool modifiedFile = false;
+    private bool isInCodeBlock = false;
+    private StringBuilder codeBlockContent;
+
     private void CacheBlock(string block, int lineIndex)
     {
         if (string.IsNullOrWhiteSpace(block))
@@ -134,8 +140,27 @@ public class MarkdownRenderer
         int extraIndentation = 0;
         block = block.Trim();
 
-        for (int i = 0; i < originalBlock.Length; i++)
-        {
+        // Handle code block start/end
+        if (block.StartsWith("```")) {
+            if (!isInCodeBlock) {
+                isInCodeBlock = true;
+                codeBlockContent = new StringBuilder();
+                // Skip the language identifier if present
+                return;
+            } else {
+                isInCodeBlock = false;
+                RenderCodeBlock(codeBlockContent.ToString());
+                codeBlockContent = null;
+                return;
+            }
+        }
+
+        if (isInCodeBlock) {
+            codeBlockContent.AppendLine(originalBlock);
+            return;
+        }
+
+        for (int i = 0; i < originalBlock.Length; i++) {
             if (originalBlock[i] == '\t') extraIndentation += 4;
             if (block.Length > 0 && originalBlock[i] == block[0])
             {
@@ -233,35 +258,41 @@ public class MarkdownRenderer
             EditorGUILayout.Space(indentationCount);
         }
         EditorGUILayout.BeginVertical();
-        var lineContent = new StringBuilder();
-
         foreach (var segment in segments)
         {
+            if (segment.isImage)
+            {
+                var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(segment.target);
+                if (texture != null)
+                {
+                    float maxWidth = EditorGUIUtility.currentViewWidth - 40;
+                    float aspectRatio = (float)texture.width / texture.height;
+                    float width = Mathf.Min(maxWidth, texture.width);
+                    float height = width / aspectRatio;
+
+                    cachedGuiCalls.Add(() => {
+                        GUILayout.Label(texture, GUILayout.Width(width), GUILayout.Height(height));
+                    });
+                }
+                continue;
+            }
+
             if (segment.isLink)
             {
-                // Flush any accumulated regular text
-                if (lineContent.Length > 0)
-                {
-                    EditorGUILayout.LabelField(lineContent.ToString(), bodyStyle);
-                    lineContent.Clear();
-                }
-
-                // Render the link
-                if (LinkLabel(new GUIContent(segment.displayText)))
-                {
-                    HandleLinkClick(segment.linkType, segment.target);
-                }
+                cachedGuiCalls.Add(() => {
+                    if (LinkLabel(new GUIContent(segment.displayText)))
+                    {
+                        HandleLinkClick(segment.linkType, segment.target);
+                    }
+                });
             }
             else
             {
-                lineContent.Append(segment.text);
+                string textSegment = segment.text;
+                cachedGuiCalls.Add(() => {
+                    EditorGUILayout.LabelField(textSegment, bodyStyle);
+                });
             }
-        }
-
-        // Flush any remaining text
-        if (lineContent.Length > 0)
-        {
-            EditorGUILayout.LabelField(lineContent.ToString(), bodyStyle);
         }
 
         EditorGUILayout.EndVertical();
@@ -276,6 +307,7 @@ public class MarkdownRenderer
     {
         public string text;
         public bool isLink;
+        public bool isImage;
         public string linkType;
         public string target;
         public string displayText;
@@ -285,7 +317,8 @@ public class MarkdownRenderer
     {
         var segments = new List<TextSegment>();
         var linkPattern = @"<link=""(.+?):(.+?)"">(.*?)</link>";
-        var matches = Regex.Matches(text, linkPattern);
+        var imagePattern = @"<image=""(.+?)""/>";
+        var matches = Regex.Matches(text, $"{linkPattern}|{imagePattern}");
         int lastIndex = 0;
 
         foreach (Match match in matches)
@@ -300,14 +333,24 @@ public class MarkdownRenderer
                 });
             }
 
-            // Add the link
-            segments.Add(new TextSegment
+            if (match.Groups[1].Success) // Link
             {
-                isLink = true,
-                linkType = match.Groups[1].Value,
-                target = match.Groups[2].Value,
-                displayText = match.Groups[3].Value
-            });
+                segments.Add(new TextSegment
+                {
+                    isLink = true,
+                    linkType = match.Groups[1].Value,
+                    target = match.Groups[2].Value,
+                    displayText = match.Groups[3].Value
+                });
+            }
+            else if (match.Groups[4].Success) // Image
+            {
+                segments.Add(new TextSegment
+                {
+                    isImage = true,
+                    target = match.Groups[4].Value
+                });
+            }
 
             lastIndex = match.Index + match.Length;
         }
@@ -366,15 +409,6 @@ public class MarkdownRenderer
         return GUI.Button(position, label, linkStyle);
     }
 
-    private void RenderCodeBlock(string block)
-    {
-        var lines = block.Split('\n');
-        var code = string.Join("\n",
-            lines.Skip(1).Take(lines.Length - 2)); // Remove ``` lines
-
-        EditorGUILayout.TextArea(code, codeStyle);
-    }
-
     private void RenderList(string block, int indentationCount, int lineIndex)
     {
         var items = block.Split('\n')
@@ -405,7 +439,7 @@ public class MarkdownRenderer
             readmeEditor.showingSpecialBackgroundColor = true;
 
             if (!drewToggle)
-                EditorGUILayout.LabelField("", GUILayout.Width(15));
+                EditorGUILayout.LabelField("•", GUILayout.Width(15));
 
             var segments = SplitTextIntoSegments(ProcessInlineFormatting(useLine));
             var lineContent = new StringBuilder();
@@ -474,7 +508,99 @@ public class MarkdownRenderer
         // Inline code
         text = Regex.Replace(text, @"`(.+?)`", "<color=#bdc4cb><b>$1</b></color>");
 
-        // Unity asset links with special syntax: [[WikiPage:path/to/asset]] or [[File:path/to/file]]
+        // Handle images and links
+        text = Regex.Replace(text, @"(!?)\[(.+?)\]\((.+?)\)", match => {
+            var isImage = match.Groups[1].Value == "!";
+            var altText = match.Groups[2].Value;
+            var path = match.Groups[3].Value;
+
+            // Skip URLs
+            if (path.StartsWith("http://") || path.StartsWith("https://"))
+            {
+                if (isImage)
+                {
+                    // TODO: Could add web image loading here if needed
+                    return $"<color=grey>[External Image: {altText}]</color>";
+                }
+                return $"<link=\"url:{path}\">{altText}</link>";
+            }
+
+            // Try direct asset path first
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+            if (asset == null)
+            {
+                // Handle paths that start with a forward slash by treating them as relative to Assets/
+                if (path.StartsWith("/"))
+                {
+                    string assetPath = "Assets" + path;
+                    asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+                    if (asset != null)
+                    {
+                        path = assetPath;
+                    }
+                }
+                // Try adding Assets/ prefix if not present
+                else if (!path.StartsWith("Assets/"))
+                {
+                    string assetPath = "Assets/" + path;
+                    asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+                    if (asset != null)
+                    {
+                        path = assetPath;
+                    }
+                }
+
+                // If still not found, try relative to current file
+                if (asset == null && readmeEditor?.target != null)
+                {
+                    try
+                    {
+                        string currentFilePath = AssetDatabase.GetAssetPath(readmeEditor.target);
+                        string currentDir = Path.GetDirectoryName(currentFilePath);
+                        string fullPath = Path.GetFullPath(Path.Combine(currentDir, path.TrimStart('/')));
+                        
+                        // Normalize paths for comparison
+                        string normalizedFullPath = Path.GetFullPath(fullPath).Replace('\\', '/');
+                        string normalizedDataPath = Path.GetFullPath(Application.dataPath).Replace('\\', '/');
+                        
+                        // Debug.Log($"Normalized paths:\n{normalizedFullPath}\n{normalizedDataPath}");
+                        
+                        // Only proceed if the path is within the Assets folder
+                        if (normalizedFullPath.StartsWith(normalizedDataPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            string relativePath = "Assets" + normalizedFullPath.Substring(normalizedDataPath.Length).Replace('\\', '/');
+                            asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(relativePath);
+                            // Debug.Log($"relativePath: {relativePath}");
+                            if (asset != null)
+                            {
+                                path = relativePath;
+                            }
+                        }
+                    }
+                    catch (ArgumentException)
+                    {
+                        Debug.LogWarning($"Invalid path characters in: {path}");
+                    }
+                }
+            }
+
+            if (asset != null)
+            {
+                if (isImage && asset is Texture2D)
+                {
+                    return $"<image={path}>";  // Special tag we'll handle in rendering
+                }
+                return $"<link=\"file:{path}\">{altText}</link>";
+            }
+            
+            // Asset not found
+            if (isImage)
+            {
+                return $"<color=red>[Missing Image: {path}]</color>";
+            }
+            return $"<link=\"url:{path}\">{altText}</link>";
+        });
+
         text = Regex.Replace(text, @"\[\[WikiPage:(.+?)\]\]", match => {
             var path = "Assets/" + match.Groups[1].Value;
             if (!path.Contains("."))
@@ -482,7 +608,8 @@ public class MarkdownRenderer
             var asset = AssetDatabase.LoadAssetAtPath<WikiPage>(path.TrimStart().TrimEnd());
             if (asset != null)
             {
-                return $"<link=\"asset:{path}\">{asset.title}</link>";
+                string displayTitle = !string.IsNullOrEmpty(asset.title) ? asset.title : Path.GetFileNameWithoutExtension(path);
+                return $"<link=\"asset:{path}\">{displayTitle}</link>";
             }
             return $"<color=red>Missing: {path}</color>";
         });
@@ -496,9 +623,6 @@ public class MarkdownRenderer
             }
             return $"<color=red>Missing: {path}</color>";
         });
-
-        // Regular markdown links
-        text = Regex.Replace(text, @"\[(.+?)\]\((.+?)\)", "<link=\"url:$2\">$1</link>");
 
         return text;
     }
@@ -525,6 +649,76 @@ public class MarkdownRenderer
             }
         }
         return false;
+    }
+
+
+    private void RenderCodeBlock(string code)
+    {
+        // C# keywords to highlight
+        string[] keywords = new string[] {
+            "public", "private", "protected", "internal", "class", "struct", "interface",
+            "void", "string", "int", "float", "bool", "var", "new", "return", "if", "else",
+            "for", "foreach", "while", "do", "switch", "case", "break", "continue", "static",
+            "readonly", "const", "using", "namespace", "ref", "out", "in", "null", "true", "false", "base", "override", "virtual", "sealed", "abstract", "event", "delegate", "enum", "struct", "interface", "class", "struct", "interface", "this",
+            "using", "namespace", "ref", "out", "in", "null", "true", "false"
+        };
+
+        var lineContent = new StringBuilder();
+        var lines = code.Split('\n');
+        int linesCount = lines.Length;
+        lineContent.AppendLine(" ");
+        
+        foreach (var line in lines)
+        {
+            string processedLine = line;
+
+            // Handle comments first
+            int commentIndex = line.IndexOf("//");
+            string comment = "";
+            if (commentIndex >= 0)
+            {
+                comment = line.Substring(commentIndex);
+                processedLine = line.Substring(0, commentIndex);
+            }
+
+            // Highlight keywords
+            foreach (var keyword in keywords)
+            {
+                processedLine = Regex.Replace(
+                    processedLine,
+                    $@"\b{keyword}\b",
+                    $"<color=#569CD6>{keyword}</color>"
+                );
+            }
+
+            // Handle string literals
+            processedLine = Regex.Replace(
+                processedLine,
+                "\".*?\"",
+                m => $"<color=#CE9178>{m.Value}</color>"
+            );
+
+            // Add back comments with different color
+            if (!string.IsNullOrEmpty(comment))
+            {
+                processedLine += $"<color=#57A64A>{comment}</color>";
+            }
+            
+            lineContent.AppendLine(processedLine);
+        }
+
+        var height = linesCount * EditorGUIUtility.singleLineHeight;
+        var guiLayoutHeight = GUILayout.Height(height);
+
+        // Cache GUI calls directly with lambda expressions
+        cachedGuiCalls.Add(() => {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox, GUILayout.ExpandHeight(true), guiLayoutHeight);
+            EditorGUI.DrawRect(GUILayoutUtility.GetRect(0, height), new Color(0.2f, 0.2f, 0.2f));
+            GUILayout.Space(2);
+            EditorGUILayout.SelectableLabel(lineContent.ToString(), bodyStyle, guiLayoutHeight);
+            EditorGUILayout.EndVertical();
+            GUILayout.Space(2);
+        });
     }
 
     string DrawToggle(string useLine, bool status, ref bool _drewToggle, int uselineSubstring = 3, int lineIndex = -1)

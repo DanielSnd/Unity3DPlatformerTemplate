@@ -21,8 +21,8 @@ public class MarkdownRenderer
     private GUIStyle linkStyle;
     private GUIStyle toggleStyle;
     private GUIStyle codeStyle;
-    private GUIStyle listStyle, textArea;
-
+    private GUIStyle listStyle;
+    private GUIStyle quoteStyle;
     private ReadmeEditor readmeEditor;
     private List<Action> cachedGuiCalls = new List<Action>();
     private string lastParsedMarkdown;
@@ -30,20 +30,6 @@ public class MarkdownRenderer
 
     public MarkdownRenderer() {
         InitializeStyles();
-        headingStyle4 = new GUIStyle(bodyStyle);
-        headingStyle4.fontSize = 14;
-        headingStyle4.fontStyle = FontStyle.Bold;
-        headingStyle4.normal.textColor = new Color(0.32f, 0.32f, 0.32f);
-
-        headingStyle5 = new GUIStyle(bodyStyle);
-        headingStyle5.fontSize = 12;
-        headingStyle5.fontStyle = FontStyle.Bold;
-        headingStyle5.normal.textColor = new Color(0.22f, 0.22f, 0.22f);
-
-        headingStyle6 = new GUIStyle(bodyStyle);
-        headingStyle6.fontSize = 10;
-        headingStyle6.fontStyle = FontStyle.Bold;
-        headingStyle6.normal.textColor = new Color(0.12f, 0.12f, 0.12f);
     }
 
     public void CacheGUICall(Action _callToCache) => cachedGuiCalls.Add(_callToCache);
@@ -65,8 +51,6 @@ public class MarkdownRenderer
         bodyStyleScratchedOff.richText = true;
         bodyStyleScratchedOff.fontSize = 14;
         bodyStyleScratchedOff.normal.textColor = Color.gray;
-
-        textArea = new GUIStyle(EditorStyles.textArea);
 
         toggleStyle = new GUIStyle(EditorStyles.toggle);
 
@@ -94,8 +78,53 @@ public class MarkdownRenderer
         codeStyle.fontSize = 12;
         codeStyle.fontStyle = FontStyle.Bold;
 
+        headingStyle4 = new GUIStyle(bodyStyle);
+        headingStyle4.fontSize = 14;
+        headingStyle4.fontStyle = FontStyle.Bold;
+        headingStyle4.normal.textColor = new Color(0.32f, 0.32f, 0.32f);
+
+        headingStyle5 = new GUIStyle(bodyStyle);
+        headingStyle5.fontSize = 12;
+        headingStyle5.fontStyle = FontStyle.Bold;
+        headingStyle5.normal.textColor = new Color(0.22f, 0.22f, 0.22f);
+
+        headingStyle6 = new GUIStyle(bodyStyle);
+        headingStyle6.fontSize = 10;
+        headingStyle6.fontStyle = FontStyle.Bold;
+        headingStyle6.normal.textColor = new Color(0.12f, 0.12f, 0.12f);
+
+        quoteStyle = new GUIStyle(bodyStyle);
+        quoteStyle.normal.textColor = new Color(0.6f, 0.6f, 0.6f);
+
         listStyle = new GUIStyle(bodyStyle);
         listStyle.padding.left = 20;
+    }
+
+    private Texture2D MakeTex(int width, int height, Color col)
+    {
+        Color[] pix = new Color[width * height];
+        for (int i = 0; i < pix.Length; i++)
+        {
+            pix[i] = col;
+        }
+        Texture2D result = new Texture2D(width, height);
+        result.SetPixels(pix);
+        result.Apply();
+        return result;
+    }
+
+    private void CacheQuoteBlock(string text)
+    {
+        CacheGUICall(() => {
+            GUILayout.Space(2);
+            var rectToUse = GUILayoutUtility.GetRect(new GUIContent(text), quoteStyle);
+            // EditorGUILayout.BeginVertical(EditorStyles.helpBox, guiLayoutHeight);
+            EditorGUI.DrawRect(new Rect(rectToUse.x, rectToUse.y, rectToUse.width * 0.98f, rectToUse.height), new Color(0.2f, 0.2f, 0.2f));
+            EditorGUI.DrawRect(new Rect(rectToUse.x, rectToUse.y, EditorGUIUtility.singleLineHeight * 0.2f, rectToUse.height), new Color(0.34f, 0.34f, 0.34f));
+            EditorGUI.LabelField(new Rect(rectToUse.x + EditorGUIUtility.singleLineHeight * 0.9f, rectToUse.y + EditorGUIUtility.singleLineHeight * 0.5f, rectToUse.width * 0.96f, rectToUse.height * 0.95f),text, quoteStyle);
+            // EditorGUILayout.EndVertical();
+            GUILayout.Space(2);
+        });
     }
 
     public void RenderMarkdown(string markdown)
@@ -141,14 +170,25 @@ public class MarkdownRenderer
     int currentSpaceBetweenBlocks = 5;
     bool modifiedFile = false;
     private bool isInCodeBlock = false;
+    private bool _lastWasQuoteBlock = false;
+    private bool lastWasQuoteBlock {get => _lastWasQuoteBlock;
+        set {
+            if (value == _lastWasQuoteBlock) return;
+            _lastWasQuoteBlock = value;
+            if (!_lastWasQuoteBlock && quoteBlockContent != null && quoteBlockContent.Length > 0) {
+                CacheQuoteBlock(quoteBlockContent.ToString());
+                codeBlockContent = null;
+            }
+        }
+    }
     private StringBuilder codeBlockContent;
-    private bool renderedHeading = false;
-
+    private StringBuilder quoteBlockContent;
     private void CacheBlock(string block, int lineIndex)
     {
         if (string.IsNullOrWhiteSpace(block))
         {
             wasPreviouslyRenderedBlockList = false;
+            lastWasQuoteBlock = false;
             wasPreviouslyRenderedBlockHeader = false;
             CacheGUICall(() => EditorGUILayout.Space(currentSpaceBetweenBlocks));
             CacheGUICall(() => EditorGUILayout.LabelField("", bodyStyle)); // Add empty line
@@ -191,20 +231,38 @@ public class MarkdownRenderer
         }
 
         bool isList = block.StartsWith("- ") || block.StartsWith("* ");
+        bool isQuoteBlock = block.StartsWith("> ");
+        if (!isQuoteBlock && lastWasQuoteBlock) {
+            lastWasQuoteBlock = false;
+            CacheGUICall(() => EditorGUILayout.Space(5));
+        }
         int drawBefore = wasPreviouslyRenderedBlockHeader && isList ? 0 : currentSpaceBetweenBlocks;
         currentSpaceBetweenBlocks = 5;
 
-        if (isList)
+        if (isList || isQuoteBlock)
         {
-            if (drawBefore > 0 && renderSpaceBeforeNextBlock)
+            if (drawBefore > 0 && renderSpaceBeforeNextBlock && !lastWasQuoteBlock)
             {
                 int spaceToDraw = drawBefore;
                 CacheGUICall(() => GUILayout.Space(spaceToDraw));
             }
-
-            CacheListBlock(block, indentationCount, lineIndex);
+        
+            if (isList) {
+                CacheListBlock(block, indentationCount, lineIndex);
+                wasPreviouslyRenderedBlockList = true;
+                lastWasQuoteBlock = false;
+            } else {
+                if (!lastWasQuoteBlock) {
+                    lastWasQuoteBlock = true;
+                    quoteBlockContent = new StringBuilder();
+                }
+                var quoteText = block.Substring(2);
+                if (indentationCount > 0)
+                    quoteText = quoteText.PadLeft(quoteText.Length + indentationCount);
+                quoteBlockContent.AppendLine(quoteText);
+                lastWasQuoteBlock = true;
+            }
             currentSpaceBetweenBlocks = 0;
-            wasPreviouslyRenderedBlockList = true;
             wasPreviouslyRenderedBlockHeader = false;
         }
         else
@@ -654,16 +712,15 @@ public class MarkdownRenderer
             lineContent.AppendLine(processedLine);
         }
 
-        var height = linesCount * EditorGUIUtility.singleLineHeight;
-        var guiLayoutHeight = GUILayout.Height(height);
         string finalContent = lineContent.ToString();
-
         CacheGUICall(() => {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox, GUILayout.ExpandHeight(true), guiLayoutHeight);
-            EditorGUI.DrawRect(GUILayoutUtility.GetRect(0, height), new Color(0.2f, 0.2f, 0.2f));
             GUILayout.Space(2);
-            EditorGUILayout.SelectableLabel(finalContent, bodyStyle, guiLayoutHeight);
-            EditorGUILayout.EndVertical();
+            var rectToUse = GUILayoutUtility.GetRect(new GUIContent(finalContent), bodyStyle);
+            // EditorGUILayout.BeginVertical(EditorStyles.helpBox, guiLayoutHeight);
+            EditorGUI.DrawRect(new Rect(rectToUse.x, rectToUse.y, rectToUse.width * 0.98f, rectToUse.height), new Color(0.2f, 0.2f, 0.2f));
+            EditorGUI.SelectableLabel(new Rect(rectToUse.x + EditorGUIUtility.singleLineHeight * 0.4f, rectToUse.y + EditorGUIUtility.singleLineHeight * 0.5f, rectToUse.width * 0.96f, rectToUse.height * 0.95f),finalContent, bodyStyle);
+            
+            // EditorGUILayout.EndVertical();
             GUILayout.Space(2);
         });
     }
